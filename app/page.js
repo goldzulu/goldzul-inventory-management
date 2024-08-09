@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Button, Modal, TextField } from '@mui/material';
+import { Box, Stack, Typography, Button, Modal, TextField, Grid, Card, CardContent, CardActions } from '@mui/material';
 import { firestore } from '@/firebase'
 
 import {
@@ -33,52 +33,93 @@ const style = {
 };
 
 export default function Home() {
-  const [inventory, setInventory] = useState([])
-  const [open, setOpen] = useState(false)
-  const [itemName, setItemName] = useState('')
+  const [inventory, setInventory] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [itemName, setItemName] = useState('');
+  const [editItemName, setEditItemName] = useState('');
+  const [editItemQuantity, setEditItemQuantity] = useState('');
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('list'); // New state to toggle between list and grid view
 
   const updateInventory = async () => {
-    const snapshot = query(collection(firestore, 'inventory'))
-    const docs = await getDocs(snapshot)
-    const inventoryList = []
+    const snapshot = query(collection(firestore, 'inventory'));
+    const docs = await getDocs(snapshot);
+    const inventoryList = [];
     docs.forEach((doc) => {
-      inventoryList.push({ name: doc.id, ...doc.data() })
-    })
-    setInventory(inventoryList)
-    }
-    
-    useEffect(() => {
-      updateInventory()
-  }, [])
+      inventoryList.push({ name: doc.id, ...doc.data() });
+    });
+    setInventory(inventoryList);
+  }
+  
+  useEffect(() => {
+    updateInventory();
+  }, []);
 
   const addItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item)
-    const docSnap = await getDoc(docRef)
+    const docRef = doc(collection(firestore, 'inventory'), item);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      const { quantity } = docSnap.data()
-      await setDoc(docRef, { quantity: quantity + 1 })
+      const { quantity } = docSnap.data();
+      await setDoc(docRef, { quantity: quantity + 1 });
     } else {
-      await setDoc(docRef, { quantity: 1 })
+      await setDoc(docRef, { quantity: 1 });
     }
-    await updateInventory()
+    await updateInventory();
   }
   
   const removeItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item)
-    const docSnap = await getDoc(docRef)
+    const docRef = doc(collection(firestore, 'inventory'), item);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      const { quantity } = docSnap.data()
+      const { quantity } = docSnap.data();
       if (quantity === 1) {
-        await deleteDoc(docRef)
+        await deleteDoc(docRef);
       } else {
-        await setDoc(docRef, { quantity: quantity - 1 })
+        await setDoc(docRef, { quantity: quantity - 1 });
       }
     }
-    await updateInventory()
+    await updateInventory();
   }
 
-  const handleOpen = () => setOpen(true)
-  const handleClose = () => setOpen(false)
+  const updateItem = async () => {
+    if (selectedItem) {
+      const docRef = doc(collection(firestore, 'inventory'), selectedItem.name);
+      await deleteDoc(docRef);  // Delete the old document with the old name
+
+      const newDocRef = doc(collection(firestore, 'inventory'), editItemName);
+      await setDoc(newDocRef, { quantity: Number(editItemQuantity) });
+      await updateInventory();
+      handleEditClose();
+    }
+  };
+
+  const handleOpen = () => setOpen(true);
+  const handleClose = () => setOpen(false);
+
+  const handleEditOpen = (item) => {
+    setSelectedItem(item);
+    setEditItemName(item.name);
+    setEditItemQuantity(item.quantity);
+    setEditOpen(true);
+  };
+
+  const handleEditClose = () => {
+    setSelectedItem(null);
+    setEditItemName('');
+    setEditItemQuantity('');
+    setEditOpen(false);
+  };
+
+  // Filter inventory based on search term
+  const filteredInventory = inventory.filter(item =>
+    item.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const toggleViewMode = () => {
+    setViewMode(viewMode === 'list' ? 'grid' : 'list');
+  };
 
   return (
     <Box
@@ -112,9 +153,9 @@ export default function Home() {
             <Button
               variant="outlined"
               onClick={() => {
-                addItem(itemName)
-                setItemName('')
-                handleClose()
+                addItem(itemName);
+                setItemName('');
+                handleClose();
               }}
             >
               Add
@@ -122,47 +163,132 @@ export default function Home() {
           </Stack>
         </Box>
       </Modal>
+
+      <Modal
+        open={editOpen}
+        onClose={handleEditClose}
+        aria-labelledby="modal-modal-edit-title"
+        aria-describedby="modal-modal-edit-description"
+      >
+        <Box sx={style}>
+          <Typography id="modal-modal-edit-title" variant="h6" component="h2">
+            Edit Item
+          </Typography>
+          <Stack width="100%" direction={'column'} spacing={2}>
+            <TextField
+              id="outlined-basic-name"
+              label="Item Name"
+              variant="outlined"
+              fullWidth
+              value={editItemName}
+              onChange={(e) => setEditItemName(e.target.value)}
+            />
+            <TextField
+              id="outlined-basic-quantity"
+              label="Quantity"
+              variant="outlined"
+              type="number"
+              fullWidth
+              value={editItemQuantity}
+              onChange={(e) => setEditItemQuantity(e.target.value)}
+            />
+            <Button
+              variant="outlined"
+              onClick={updateItem}
+            >
+              Update
+            </Button>
+          </Stack>
+        </Box>
+      </Modal>
+
       <Button variant="contained" onClick={handleOpen}>
         Add New Item
       </Button>
-      <Box border={'1px solid #333'}>
-        <Box
-          width="800px"
-          height="100px"
-          bgcolor={'#ADD8E6'}
-          display={'flex'}
-          justifyContent={'center'}
-          alignItems={'center'}
-        >
-          <Typography variant={'h2'} color={'#333'} textAlign={'center'}>
-            Inventory Items
-          </Typography>
+      
+      <TextField
+        label="Search Inventory"
+        variant="outlined"
+        fullWidth
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        sx={{ marginBottom: 2, width: '800px' }}
+      />
+      
+      <Button variant="contained" onClick={toggleViewMode}>
+        Toggle View: {viewMode === 'list' ? 'Grid' : 'List'}
+      </Button>
+
+      {viewMode === 'list' ? (
+        <Box border={'1px solid #333'}>
+          <Box
+            width="800px"
+            height="100px"
+            bgcolor={'#ADD8E6'}
+            display={'flex'}
+            justifyContent={'center'}
+            alignItems={'center'}
+          >
+            <Typography variant={'h2'} color={'#333'} textAlign={'center'}>
+              Inventory Items
+            </Typography>
+          </Box>
+          <Stack width="800px" height="300px" spacing={2} overflow={'auto'}>
+            {filteredInventory.map(({name, quantity}) => (
+              <Box
+                key={name}
+                width="100%"
+                minHeight="150px"
+                display={'flex'}
+                justifyContent={'space-between'}
+                alignItems={'center'}
+                bgcolor={'#f0f0f0'}
+                paddingX={5}
+              >
+                <Typography variant={'h3'} color={'#333'} textAlign={'center'}>
+                  {name.charAt(0).toUpperCase() + name.slice(1)}
+                </Typography>
+                <Typography variant={'h3'} color={'#333'} textAlign={'center'}>
+                  {quantity}
+                </Typography>
+                <Stack direction={'row'} spacing={2}>
+                <Button variant="contained" onClick={() => addItem(name)}>
+                  Add
+                </Button>
+                <Button variant="contained" onClick={() => removeItem(name)}>
+                  Remove
+                </Button>
+                <Button variant="contained" onClick={() => handleEditOpen({ name, quantity })}>
+                  Edit
+                </Button>
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
         </Box>
-        <Stack width="800px" height="300px" spacing={2} overflow={'auto'}>
-          {inventory.map(({name, quantity}) => (
-            <Box
-              key={name}
-              width="100%"
-              minHeight="150px"
-              display={'flex'}
-              justifyContent={'space-between'}
-              alignItems={'center'}
-              bgcolor={'#f0f0f0'}
-              paddingX={5}
-            >
-              <Typography variant={'h3'} color={'#333'} textAlign={'center'}>
-                {name.charAt(0).toUpperCase() + name.slice(1)}
-              </Typography>
-              <Typography variant={'h3'} color={'#333'} textAlign={'center'}>
-                Quantity: {quantity}
-              </Typography>
-              <Button variant="contained" onClick={() => removeItem(name)}>
-                Remove
-              </Button>
-            </Box>
+      ) : (
+        <Grid container spacing={2} width="800px">
+          {filteredInventory.map(({ name, quantity }) => (
+            <Grid item xs={12} sm={6} md={4} key={name}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h5" component="div">
+                    {name.charAt(0).toUpperCase() + name.slice(1)}
+                  </Typography>
+                  <Typography variant="h6" color="text.secondary">
+                    Quantity: {quantity}
+                  </Typography>
+                </CardContent>
+                <CardActions>
+                  <Button size="small" onClick={() => addItem(name)}>Add</Button>
+                  <Button size="small" onClick={() => removeItem(name)}>Remove</Button>
+                  <Button size="small" onClick={() => handleEditOpen({ name, quantity })}>Edit</Button>
+                </CardActions>
+              </Card>
+            </Grid>
           ))}
-        </Stack>
-      </Box>
+        </Grid>
+      )}
     </Box>
   )
 }
